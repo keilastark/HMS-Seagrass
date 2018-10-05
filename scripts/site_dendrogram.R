@@ -2,6 +2,7 @@ library(tidyverse)
 library(vegan)
 library(viridis)
 library(gplots)
+library(RColorBrewer)
 
 com_data<-read.csv("./Data/for_ems.csv")
 blues<-read.csv("./Data/blues_only2.csv")[,-1]
@@ -35,10 +36,19 @@ library(heatmaply)
 options(scipen=1)
 sub_com_ordered<-round(as.matrix(com_stand)[,order(apply(com_stand,2,mean),decreasing = T)][,1:10],digits = 2)
 
-heatmaply(sub_com_ordered, k_row = 3, k_col = 3,Colv = F,hclust_method = "ward.D",)
+heatmaply(sub_com_ordered, k_row = 3, k_col = 3,Colv = F,hclust_method = "ward.D")
+heatmaply(sub_com_ordered, k_row = 3, k_col = 5,hclust_method = "ward.D")
 
 sub_com_ordered2<-decostand(com_data, method = "hellinger")
 
 heatmaply(sub_com_ordered2, k_row = 3, k_col = 5,hclust_method = "ward.D")
 
 
+
+species_cov<-cov(as.matrix(com_data)[,order(apply(com_stand,2,mean),decreasing = T)][,1:10])
+#species_cov<-cov(com_data)
+diag(species_cov)<-NA
+heatmaply(species_cov,colors = brewer.pal(10,name = "RdBu"))
+heatmaply(species_cov, scale_fill_gradient_fun = ggplot2::scale_fill_gradient2(low = "red", high = "blue", midpoint = 0,mid = "white"))
+
+          
