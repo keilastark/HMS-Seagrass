@@ -67,7 +67,7 @@ spatial <- spatial[,-1]
 ```
  
 
-#### 3. CREATE HMSCdata OBJECT WITH THE ABOVE 4 INPUT MATRICES, GENERATE MODEL 
+### CREATE HMSCdata OBJECT WITH THE ABOVE 4 INPUT MATRICES, GENERATE MODEL 
 
 ```{r, echo=FALSE}
 
@@ -95,7 +95,7 @@ spacemod <-  hmsc(spaceonly, family = "poisson", niter = 100000, nburn = 1000,
 
 ```
 
-### 3. Produce mixing, trace, density plots to look at model performance
+### Produce mixing, trace, density plots to look at model performance
 ### Note: None of the figures/ results from this section are included in the paper. This is for assessing your model performance. 
 ```{r, echo=FALSE}
 ##Producing MCMC traceplots
@@ -142,9 +142,8 @@ rownames(paramXCITable) <- paste(rep(colnames(average),
 ```
 
 
-
-#### 4. COMPUTE MODEL FIT (D2adj or Explained Deviance)
-###3 Values shown in Table S2: Supporting Information
+### COMPUTE MODEL FIT (D2adj or Explained Deviance)
+### Values shown in Table S2: Supporting Information
 
 ### Code generously provided by Petr Keil & Duarte Viana, November 2018
 
@@ -184,7 +183,8 @@ D2.avg.Poisson <- function(Y.obs, Y.pred)
   return(D2)
 }
 
-# This version of the funciton does the same thing but returns a vector of D2 values rather than one mean
+# This version of the function does the same thing but returns a vector of D2 values (one for each species) rather than one mean community-level value
+
 D2.Poisson <- function(Y.obs, Y.pred)
 {
   Y <- as.matrix(Y.obs)
@@ -207,52 +207,13 @@ D2.Poisson <- function(Y.obs, Y.pred)
 
 # Use with HMSC: Y is the species matrix, pred.hmsc is the predicted species matrix
 pred.hmsc <- predict(model)
-R2 <- D2.avg.Poisson(Y, pred.hmsc) #single average community level value
+D2.comm <- D2.avg.Poisson(Y, pred.hmsc) #single average community level value
 D2 <- D2.Poisson(Y, pred.hmsc) #value for each species
 
-plot(x=pre,y=D2,xlab="Average quadrat-level abundance",ylab="Predictive power (Pseudo R2)") ## can plot against abundance to visualize D2 for each spp if desired
+plot(x=pre,y=D2,xlab="Average quadrat-level abundance",ylab="Predictive power (D2)") ## just as an example, can plot against abundance to visualize the relationship between D2 for each spp if desired
 ```
 
 
-
-#### VARIATION PARTITIONING OF SPATIAL RANDOM EFFECTS AND ENVIRONMENTAL VARIABLES (Fig. 2)----------
-
-# First conduct variation partitioning/ create object summarizing result for global model...
-
-```{r, echo = FALSE}
-varpart <- variPart(model, c(rep("Habitat structure",3),rep("Food availability",3), rep("Fetch",1),rep("Dissolved O2",1),rep("Salinity",1),rep("pH",1),rep("Mean Temp",1), rep("Nitrates",1),rep("Phosphates",1), rep("Silicates",1),rep("Chl a",1)))
-
-# Environment only
-varpartenv <- variPart(envmod, c(rep("Habitat structure",3),rep("Food availability",3), rep("Fetch",1),rep("Dissolved O2",1),rep("Salinity",1),rep("pH",1),rep("Mean Temp",1), rep("Nitrates",1),rep("Phosphates",1), rep("Silicates",1),rep("Chl a",1)))
-
-# Space only
-varpartspatial<- variPart(spacemod, c(rep("intercept",1)))
-
-# Now take the mean variance explained by the global model and each independent model 
-spatmeans <- colMeans(varpartspatial) 
-envmeans <- colMeans(varpartenv) 
-wholemeans <- colMeans(varpart)
-```
-## Use these values to calculate different fractions of variation explained 
-## (See "manual_varpart.xlsx" for detailed description)
-## The output of these calculations is the Venn Diagram in Fig. S3, Supporting Information
-
----------
-
-#Now we are going to create the variation partitioning barplot in Fig. 2 - using the Global Model only
-```{r, echo=FALSE}
-
-par(mar=c(2.5,3,2.5,12.7)) ## set margins to make space for sp and variable labels
-par(xpd = FALSE)
-
-# Create the figure. The interesting spacing scheme is to separate broad taxonomic groupings.
-barplot(t(varpart), las=2, cex.names=0.75, cex.axis=0.75, col = c("springgreen4" , "yellow2",  "#31688EFF", "#31688EF2", "#31688EE6", "#31688ED9", "#31688ECC", "#31688EBF", "#31688EB3", "#31688EA6", "#31688E99", "#440154FF", "#44015480", "black"),  space = c(0,0,0,0,0,0,0,0,0,0,0,0,0.6,0,0,0,0,0.6,0,0,0,0,0,0,0,0,0.6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0.6,0,0,0.6,0.6,0.6,0.6,0,0,0,0.6,0.6,0,0,0.6,0,0.6), 
-        legend.text=paste(colnames(variationPart)," ",
-                          signif(100*colMeans(variationPart),2),"%",sep=""),
-        args.legend=list(y=1.01, xjust=0.023, horiz=F, bty="n",cex=0.77)) 
-
-
-```
 
 
 
@@ -301,133 +262,57 @@ lines(y=predict(lm(ta[,3]~ta[,1])),x=wop,col="cyan3",lwd = 3)
 legend("bottomright", legend=c("Space + environmental covariates","Space only"),col=c("firebrick","cyan3") ,cex= 0.75, pch=c(1,2), xpd = NA, inset = c(.5,-.5), bty = "n")
 
 
-
 ```
 
 
-### Made a modified version of the Imagine function from the metacom package to fill cells with colour based on which co-occurrence grouping they belonged to (from Ward D2 cluster analysis on HMSC model)
-### Function names are imagine1() [Greys] imagine2() [Turquoise] and imagine3() [Purples]
+#### VARIATION PARTITIONING OF SPATIAL RANDOM EFFECTS AND ENVIRONMENTAL VARIABLES ----------
+# Full Variation partitioning calculations (as summarized in Fig. S3, Supporting Info)
+# First conduct variation partitioning/ create object summarizing result for global model...
+
+```{r, echo = FALSE}
+varpart <- variPart(model, c(rep("Habitat structure",3),rep("Food availability",3), rep("Fetch",1),rep("Dissolved O2",1),rep("Salinity",1),rep("pH",1),rep("Mean Temp",1), rep("Nitrates",1),rep("Phosphates",1), rep("Silicates",1),rep("Chl a",1)))
+
+# Environment only
+varpartenv <- variPart(envmod, c(rep("Habitat structure",3),rep("Food availability",3), rep("Fetch",1),rep("Dissolved O2",1),rep("Salinity",1),rep("pH",1),rep("Mean Temp",1), rep("Nitrates",1),rep("Phosphates",1), rep("Silicates",1),rep("Chl a",1)))
+
+# Space only
+varpartspatial<- variPart(spacemod, c(rep("intercept",1)))
+
+# Now take the mean variance explained by the global model and each independent model 
+spatmeans <- colMeans(varpartspatial) 
+envmeans <- colMeans(varpartenv) 
+wholemeans <- colMeans(varpart)
+```
+## Use these values to calculate different fractions of variation explained 
+## (See "manual_varpart.xlsx" for detailed description)
+## ^^ The output of these calculations is the Venn Diagram in Fig. S3, Supporting Information
+
+---------
+
+#Now we are going to create the variation partitioning barplot in Fig. 2 - using the Global Model only
 
 ```{r, echo=FALSE}
-imagine1 <- function (comm, col = col, fill = TRUE, 
-                      xlab = "", ylab = "", yline = 2, xline = 2, sitenames = rownames(comm), 
-                      speciesnames = colnames(comm), binary = TRUE) 
-{
-  reverse <- nrow(comm):1
-  comm <- comm[reverse, ]
-  par(mar = c(1, 6, 15, 1))
-  
-  image(1:dim(comm)[2], 1:dim(comm)[1], t(comm), grs = c("#00000000","#52525203","#52525205","#52525208","#5252520A","#5252520D","#5252520F","#52525212","#52525214","#52525217","#5252521A","#5252521C","#5252521F","#52525221","#52525224","#52525226","#52525229","#5252522B","#5252522E","#52525230","#52525233","#52525236","#52525238","#5252523B","#5252523D","#52525240","#52525242","#52525245","#52525247","#5252524A","#5252524D","#5252524F","#52525252","#52525254","#52525257","#52525259","#5252525C","#5252525E","#52525261","#52525263","#52525266","#52525269","#5252526B","#5252526E","#52525270","#52525273","#52525275","#52525278","#5252527A","#5252527D","#52525280","#52525282","#52525285","#52525287","#5252528A","#5252528C","#5252528F","#52525291","#52525294","#52525296","#52525299","#5252529C","#5252529E","#525252A1","#525252A3","#525252A6","#525252A8","#525252AD","#525252B0","#525252B3","#525252B5","#525252B8","#525252BA","#525252BD","#525252BF","#525252C2","#525252C4","#525252C7","#525252C9","#525252CC","#525252CF","#525252D1","#525252D4","#525252D6","#525252D9","#525252DB","#525252DE","#525252E0","#525252E3","#525252E6","#525252E8","#525252EB","#525252ED","#525252F0","#525252F2","#525252F5","#525252F7","#525252FA","#525252FC"), xlab = "", ylab = "", axes = FALSE)
-  box()
-  if (length(sitenames) > 1) {
-    axis(2, at = 1:dim(comm)[1], labels = sitenames, las = 1, 
-         cex.axis = 1, lwd.ticks = 0)
-  }
-  if (length(speciesnames) > 1) {
-    axis(3, at = 1:dim(comm)[2], labels = speciesnames, las = 2, 
-         cex.axis = 1, lwd.ticks = 0)
-  }
-  mtext(xlab, 3, cex = 1.5, line = xline)
-  mtext(ylab, 2, cex = 1.5, line = yline)
-}
 
-imagine2 <- function (comm, col = col, fill = TRUE, 
-                      xlab = "", ylab = "", yline = 2, xline = 2, sitenames = rownames(comm), 
-                      speciesnames = colnames(comm), binary = TRUE, add = TRUE) 
-{
-  reverse <- nrow(comm):1
-  comm <- comm[reverse, ]
-  par(mar = c(1, 6, 15, 1))
-  
-  image(1:dim(comm)[2], 1:dim(comm)[1], t(comm), col = c("#00000000","#21908C03","#21908C05","#21908C08","#21908C0A","#21908C0D","#21908C0F","#21908C12","#21908C14","#21908C17","#21908C1A","#21908C1C","#21908C1F","#21908C21","#21908C24","#21908C26","#21908C29","#21908C2B","#21908C2E","#21908C30","#21908C33","#21908C36","#21908C38","#21908C3B","#21908C3D","#21908C40","#21908C42","#21908C45","#21908C47","#21908C4A","#21908C4D","#21908C4F","#21908C52","#21908C54","#21908C57","#21908C59","#21908C5C","#21908C5E","#21908C61","#21908C63","#21908C66","#21908C69","#21908C6B","#21908C6E","#21908C70","#21908C73","#21908C75","#21908C78","#21908C7A","#21908C7D","#21908C80","#21908C82","#21908C85","#21908C87","#21908C8A","#21908C8C","#21908C8F","#21908C91","#21908C94","#21908C96","#21908C99","#21908C9C","#21908C9E","#21908CA1","#21908CA3","#21908CA6","#21908CA8","#21908CAD","#21908CB0","#21908CB3","#21908CB5","#21908CB8","#21908CBA","#21908CBD","#21908CBF","#21908CC2","#21908CC4","#21908CC7","#21908CC9","#21908CCC","#21908CCF","#21908CD1","#21908CD4","#21908CD6","#21908CD9","#21908CDB","#21908CDE","#21908CE0","#21908CE3","#21908CE6","#21908CE8","#21908CEB","#21908CED","#21908CF0","#21908CF2","#21908CF5","#21908CF7","#21908CFA","#21908CFC"), xlab = "", ylab = "", axes = FALSE, add = TRUE)
-  box()
-  if (length(sitenames) > 1) {
-    axis(2, at = 1:dim(comm)[1], labels = sitenames, las = 1, 
-         cex.axis = 1, lwd.ticks = 0)
-  }
-  if (length(speciesnames) > 1) {
-    axis(3, at = 1:dim(comm)[2], labels = speciesnames, las = 2, 
-         cex.axis = 1, lwd.ticks = 0)
-  }
-  mtext(xlab, 3, cex = 1.5, line = xline)
-  mtext(ylab, 2, cex = 1.5, line = yline)
-}
+par(mar=c(2.5,3,2.5,12.7)) ## set margins to make space for sp and variable labels
+par(xpd = FALSE)
 
-imagine3 <- function (comm, col = col, fill = TRUE, 
-                      xlab = "", ylab = "", yline = 2, xline = 2, sitenames = rownames(comm), 
-                      speciesnames = colnames(comm), binary = TRUE, add = TRUE) 
-{
-  reverse <- nrow(comm):1
-  comm <- comm[reverse, ]
-  par(mar = c(1, 6, 15, 1))
-  
-  image(1:dim(comm)[2], 1:dim(comm)[1], t(comm), col = c("#00000000","#44015403","#44015405","#44015408","#4401540A","#4401540D","#4401540F","#44015412","#44015414","#44015417","#4401541A","#4401541C","#4401541F","#44015421","#44015424","#44015426","#44015429","#4401542B","#4401542E","#44015430","#44015433","#44015436","#44015438","#4401543B","#4401543D","#44015440","#44015442","#44015445","#44015447","#4401544A","#4401544D","#4401544F","#44015452","#44015454","#44015457","#44015459","#4401545C","#4401545E","#44015461","#44015463","#44015466","#44015469","#4401546B","#4401546E","#44015470","#44015473","#44015475","#44015478","#4401547A","#4401547D","#44015480","#44015485","#44015487","#4401548A","#4401548C","#4401548F","#44015491","#44015494","#44015496","#44015499","#4401549C","#4401549E","#440154A1","#440154A3","#440154A6","#440154A8","#440154AD","#440154B0","#440154B3","#440154B5","#440154B8","#440154BA","#440154BD","#440154BF","#440154C2","#440154C4","#440154C7","#440154C9","#440154CC","#440154CF","#440154D1","#440154D4","#440154D6","#440154D9","#440154DB","#440154DE","#440154E0","#440154E3","#440154E6","#440154E8","#440154EB","#440154ED","#440154F0","#440154F2","#440154F5","#440154F7","#440154FA","#440154FC"), xlab = "", ylab = "", axes = FALSE, add = TRUE)
-  box()
-  if (length(sitenames) > 1) {
-    axis(2, at = 1:dim(comm)[1], labels = sitenames, las = 1, 
-         cex.axis = 1, lwd.ticks = 0)
-  }
-  if (length(speciesnames) > 1) {
-    axis(3, at = 1:dim(comm)[2], labels = speciesnames, las = 2, 
-         cex.axis = 1, lwd.ticks = 0)
-  }
-  mtext(xlab, 3, cex = 1.5, line = xline)
-  mtext(ylab, 2, cex = 1.5, line = yline)
-}
+# Create the figure. The interesting spacing scheme is to separate broad taxonomic groupings.
+barplot(t(varpart), las=2, cex.names=0.75, cex.axis=0.75, col = c("springgreen4" , "yellow2",  "#31688EFF", "#31688EF2", "#31688EE6", "#31688ED9", "#31688ECC", "#31688EBF", "#31688EB3", "#31688EA6", "#31688E99", "#440154FF", "#44015480", "black"),  space = c(0,0,0,0,0,0,0,0,0,0,0,0,0.6,0,0,0,0,0.6,0,0,0,0,0,0,0,0,0.6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0.6,0,0,0.6,0.6,0.6,0.6,0,0,0,0.6,0.6,0,0,0.6,0,0.6), 
+        legend.text=paste(colnames(variationPart)," ",
+                          signif(100*colMeans(variationPart),2),"%",sep=""),
+        args.legend=list(y=1.01, xjust=0.023, horiz=F, bty="n",cex=0.77)) 
+
 
 ```
-
-## read them back in after editing in excel 
-grays_only3 <- read.csv("grays_only3.csv", header = TRUE, stringsAsFactors = FALSE)
-row.names(grays_only3) <- grays_only3[,1]
-grays_only3 <- grays_only3[,2:56]
-
-
-blues_only3 <- read.csv("blues_only3.csv", header = TRUE, stringsAsFactors = FALSE)
-row.names(blues_only3) <- blues_only3[,1]
-blues_only3 <- blues_only3[,2:56]
-
-
-purples_only3 <- read.csv("purples_only3.csv", header = TRUE, stringsAsFactors = FALSE)
-row.names(purples_only3) <- purples_only3[,1]
-purples_only3 <- purples_only3[,2:56]
-
-## Do this again for log transformed stuff 
-
-log_grays_only <- read.csv("log_grays_only.csv", header = TRUE, stringsAsFactors = FALSE)
-row.names(log_grays_only) <- log_grays_only[,1]
-log_grays_only1 <- log_grays_only[,2:56]
-
-
-log_blues_only <- read.csv("log_blues_only.csv", header = TRUE, stringsAsFactors = FALSE)
-row.names(log_blues_only) <- log_blues_only[,1]
-log_blues_only1 <- log_blues_only[,2:56]
-
-
-log_purples_only <- read.csv("log_purples_only.csv", header = TRUE, stringsAsFactors = FALSE)
-row.names(log_purples_only) <- log_purples_only[,1]
-log_purples_only1 <- log_purples_only[,2:56]
-
-
-
-
-imagine1(grays_only3)
-imagine2(subblues)
-imagine3(subpurples)
-
-imagine1(log_grays_only1)
-imagine2(log_blues_only1)
-imagine3(log_purples_only1)
-
-imagine1(subgreys)
-imagine2(subblues)
-imagine3(subpurples)
-
 #### PLOT SPECIES-TO-SPECIES CORRELATION MATRIX (Fig. 3a)
 ```{r, echo=FALSE}
 corMat <- corRandomEff(model, cor =TRUE)
-averageCor <- apply(corMat[ ,,,2], 1:2, mean)
-corrplot(averageCor, method = "color", col = colorRampPalette(c("#21908C","white","#440154"))(200), order = "hclust", hclust.method = "average", tl.col = "black", tl.cex = 0.8)
+averageCor <- apply(corMat$Random[ ,,,1], 1:2, mean)
+averageCor1 <- averageCor[c(2,7,13,14,25,26,27,29,30,35,37,38,42,43,44,46,48,49,50,54),c(2,7,13,14,25,26,27,29,30,35,37,38,42,43,44,46,48,49,50,54)] # Take 20 most abundant sp
+corrplot(averageCor, method = "color", col = colorRampPalette(c("#21908C","white","#440154"))(200), order = "hclust", hclust.method = "ward.D2", tl.col = "black", tl.cex = 0.8)
+averageCor # incl all species (S6 Supplementary Material)
+corrplot(averageCor1, method = "color", col = colorRampPalette(c("#21908C","white","#440154"))(200), order = "hclust", hclust.method = "ward.D2", tl.col = "black", tl.cex = 0.8)
+averageCor # incl top 20 species (Fig. 4a)
 ```
 
 
