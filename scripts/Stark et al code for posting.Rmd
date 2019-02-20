@@ -84,12 +84,12 @@ envparam <- as.HMSCparam(envonly,envprior)
 spaceprior <- as.HMSCprior(spaceonly)
 spaceparam <- as.HMSCparam(spaceonly, spaceprior)
 
-## Generate the hierarchical joint species distribution model with MCMC. We used 200000 interations, as the developers of the method note that Poisson distributions sometimes require 10-100 times more iterations to accurately estimate the model's parameters
-model <- hmsc(hmsc1, family = "poisson", niter = 100000, nburn = 1000,
+## Generate the hierarchical joint species distribution model with MCMC. We used 200000 interations, as the developers of the method note that Poisson distributions sometimes require 10-100 times more iterations to accurately estimate the model's parameters. The Markov Chain burn-in length is 1000, and is thinned to retain every 100th sample of the posterior distribution. 
+model <- hmsc(hmsc1, family = "poisson", niter = 200000, nburn = 1000,
               thin = 100)
-envmod <-  hmsc(envonly, family = "poisson", niter = 100000, nburn = 1000,
+envmod <-  hmsc(envonly, family = "poisson", niter = 200000, nburn = 1000,
                 thin = 100)
-spacemod <-  hmsc(spaceonly, family = "poisson", niter = 100000, nburn = 1000,
+spacemod <-  hmsc(spaceonly, family = "poisson", niter = 200000, nburn = 1000,
                   thin = 100)
 ## Note the three separate models- the main model we will use is the global model entitled "model", however the environmental (envmod) and spatial models (spacemod) will be used for the variation partitioning calculation reported in the main text and showed in the Venn diagram in Fig. S3, Supporting Information
 
