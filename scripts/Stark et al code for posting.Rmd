@@ -52,7 +52,7 @@ rownames(X) <- Y[,1]
 spatial <- read.csv("coords.csv", header = TRUE, stringsAsFactors = FALSE) # lat&long coordinates
 rownames(spatial) <- Y[,1]
 
-Pi <- read.csv("pi.csv", header = TRUE, stringsAsFactors = FALSE) #factors representing random effects
+Pi <- read.csv("pi.csv", header = TRUE, stringsAsFactors = FALSE) #factors representing random effects from spatially nested sampling design
 Pi <- data.frame(apply(Pi,2,as.factor))
 
 Y <- Y[,-1] #remove actual site names from Y matrix
