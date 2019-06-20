@@ -3,13 +3,10 @@ title: "Beyond a single patch: local and regional processes explain diversity pa
 author: "Code by Keila Stark"
 date: '2018-09-30'
 output:  
-  pdf_document: default
   html_document: default
+  pdf_document: default
 ---
 
-```=
-setwd("~/Documents/seagrass_metacom_paper")
-```
 
 ## Load packages
 
@@ -40,9 +37,13 @@ library(dendextend)
 1. READ IN AND PREPARE DATA
 
 ```{r, echo=FALSE}
-READ IN AND PREPARE DATA
 
-Y <- read.csv("Y_matrix.csv", header = TRUE, stringsAsFactors = FALSE) # Site-by-sp matrix (Y)
+setwd("~/Github/HMS-Seagrass/Data")
+
+Y <- read.csv("Y_matrix.csv", header = TRUE, stringsAsFactors = FALSE) # Site-by-sp matrix
+
+Y <- read.csv(text=getURL("https://raw.githubusercontent.com/keilast/HMS-Seagrass/master/Data/Y_matrix.csv"), header = TRUE)
+
 rownames(Y) <- Y[,1]
 
 X <- read.csv("X_matrix.csv", header = TRUE, stringsAsFactors = FALSE) # Environmental covariate matrix (X)
@@ -64,6 +65,21 @@ Y <- as.matrix(Y)
 X <- as.matrix(X)
 spatial <- as.data.frame(spatial)
 spatial <- spatial[,-1]
+
+studyDesign <- Pi
+spat <- data.frame(spat = sprintf('spatial_%.2d',1:78))
+studyDesign <- cbind(studyDesign, spat)
+
+rL1 = HmscRandomLevel(units = studyDesign$Quadrat)
+rL2 = HmscRandomLevel(units = studyDesign$Site)
+rL3 = HmscRandomLevel(units = studyDesign$Region)
+rL4 = HmscRandomLevel(sData = spatial[,2:3])
+
+rL1sub = HmscRandomLevel(units = studyDesignsub$Quadrat)
+rL2sub = HmscRandomLevel(units = studyDesignsub$Site)
+rL3sub = HmscRandomLevel(units = studyDesignsub$Region)
+rL4sub = HmscRandomLevel(sData = spatialsub[,2:3])
+
 ```
  
 
@@ -71,10 +87,9 @@ spatial <- spatial[,-1]
 
 ```{r, echo=FALSE}
 
-#Create HMSCdata object with the above four input matrices
-hmsc1 <- as.HMSCdata(Y = Y, X = X, Random = Pi, Auto = spatial)
-envonly <- as.HMSCdata(Y = Y, X = X, Random = Pi)
-spaceonly <- as.HMSCdata(Y = Y, Random = Pi, Auto = spatial)
+hM <- Hmsc(Y = Y, XData = X, XFormula = ~eelgrass_lai + dissox + salinity + ph + sstmean + nitrate + chlomean, studyDesign = studyDesign, ranLevels = list(Quadrat = rL1, Site = rL2, Region = rL3, spat = rL4))
+
+mod <- sampleMcmc(hM, samples = 100 , transient = 1000, thin = 100)
 
 # set prior distribution
 hmscprior <- as.HMSCprior(hmsc1)
