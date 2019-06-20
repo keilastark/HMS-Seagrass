@@ -1,0 +1,28 @@
+---
+title: "BC Seagrass Metacommunity Analysis"
+author: "Keila Stark"
+date: "20/06/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Install and Library Packages
+
+```{r packages, echo = FALSE, warning=FALSE, message=FALSE}
+library(devtools)
+install_github("hmsc-r/HMSC", build_opts = c("--no-resave-data", "--no-manual"))
+library(Hmsc)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
