@@ -9,7 +9,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## Install and Library Packages
+# Install and Library Packages
 
 ```{r packages, echo = FALSE, warning=FALSE, message=FALSE}
 
@@ -37,22 +37,23 @@ library(Hmsc)
 
 ```
 
-## Read data
+# Read data
 
 ```{r read data, echo=FALSE, warning=FALSE, message=FALSE}
 setwd("~/Github/HMS-Seagrass/Data")
-Y <- read.csv("./Data/Y_matrix.csv", header = TRUE, stringsAsFactors = FALSE)
+
+Y <- read.csv("Y_matrix.csv", header = TRUE, stringsAsFactors = FALSE)
 rownames(Y) <- Y[,1]
-X <- read.csv("./Data/X_matrix.csv", header = TRUE, stringsAsFactors = FALSE) # Environmental covariate matrix (X)
+X <- read.csv("X_matrix.csv", header = TRUE, stringsAsFactors = FALSE) # Environmental covariate matrix (X)
 #X <- X[,-c(7,8,10)] #watch out! this is way of removing data can easily lead to mistakes if your column order changes
 X <- X %>% dplyr::select(-dissox) # this is a much safer way to remove data, prevents things messing up if the order of the columns changes
 rownames(X) <- Y[,1]
 
-spatial <- read.csv("./Data/coords.csv", header = TRUE, stringsAsFactors = FALSE) # lat&long coordinates
+spatial <- read.csv("coords.csv", header = TRUE, stringsAsFactors = FALSE) # lat&long coordinates
 rownames(spatial) <- Y[,1]
 #spatial <- spatial[,-1] #why are you removing longitude, this would assume no spatial distance between sites at the same latitude but at different longitudes
 
-studyDesign <- read.csv("./Data/pi.csv", header = TRUE, stringsAsFactors = FALSE) #factors
+studyDesign <- read.csv("pi.csv", header = TRUE, stringsAsFactors = FALSE) #factors
 
 Y <- Y[,-1] #remove actual site names from Y matrix now that rownames for all datasets have been established
 
@@ -75,23 +76,46 @@ rL4= HmscRandomLevel(sData = spatial)
 ```
 
 
-
+# Construct HMSC model object and fit with MCMC
 
 ```{r fit model, echo=FALSE, warning=FALSE, message=FALSE}
 # Construct and fit HMSC model
 #hM <- Hmsc(Y = Y, XData = X,XFormula = ~eelgrass_lai + ph + sstmean + nitrate + chlomean + salinity,  studyDesign = studyDesign, ranLevels = list(Quadrat = rL1, Site = rL2, Region = rL3, Spatial = rL4)) # I have selected only these variables because some covary (ggpairs analysis)
 
 hM <- Hmsc(Y = Y, XData = X, 
-           XFormula = ~eelgrass_lai + ph + sstmean + nitrate + chlomean + salinity, 
-           studyDesign = studyDesign, 
-           ranLevels = list(Spatial = rL4))
+           XFormula = ~eelgrass_lai + ph + sstmean + nitrate + chlomean + salinity, studyDesign = studyDesign, ranLevels = list(Quadrat = rL1, Site = rL2, Region = rL3, Spatial = rL4))
 
 # Run MCMC chains. took at least 12 hours on KS laptop
 
 mod <- sampleMcmc(hM, samples = 1000 , transient = 1000, thin = 100, verbose = 20000)
 
+```
 
+# Evaluate MCMC convergence
+We ensured MCMC chains were well-mixed for parameters beta (species niches/ responses to environmental covariates) and omega (residual species-to-species covariances). While beyond the scope of this study, parameters for phylogenetic signal and traits are also enabled in the HMSC framework.
 
+```{r evaluate markov chains}
+# computationally intense so #'d out these lines
+#mpost <- convertToCodaObject(mod)
+#par(mfrow=c(3,2))
+#ess.beta = effectiveSize(mpost$Beta)
+#psrf.beta = gelman.diag(mpost$Beta,multivariate=FALSE)$psrf hist(ess.beta)
+#hist(psrf.beta)
+#ess.gamma = effectiveSize(mpost$Gamma)
+#psrf.gamma = gelman.diag(mpost$Gamma,multivariate=FALSE)$psrf hist(ess.gamma)
+#hist(psrf.gamma)
+#sppairs = matrix(sample(x = 1:ns^2, size = 100))
+#tmp = mpost$Omega[[1]]
+#for (chain in 1:length(tmp)){
+#   tmp[[chain]] = tmp[[chain]][,sppairs]
+#}
+#ess.omega = effectiveSize(tmp)
+#psrf.omega = gelman.diag(tmp,multivariate=FALSE)$psrf hist(ess.omega)
+#hist(psrf.omega)
+```
 
+```{r variation partitioning}
+preds = computePredictedValues(mod)
+postBeta <- getPostEstimate(mod, parName = "Beta")
 ```
 
