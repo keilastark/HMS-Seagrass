@@ -84,7 +84,7 @@ rL4= HmscRandomLevel(sData = spatial)
 
 hM <- Hmsc(Y = Y, XData = X, 
            XFormula = ~eelgrass_lai + ph + sstmean + nitrate + chlomean + salinity, studyDesign = studyDesign, ranLevels = list(Quadrat = rL1, Site = rL2, Region = rL3, Spatial = rL4))
-
+ 
 # Run MCMC chains. took at least 12 hours on KS laptop
 
 mod <- sampleMcmc(hM, samples = 1000 , transient = 1000, thin = 100, verbose = 20000)
