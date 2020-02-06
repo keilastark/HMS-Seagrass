@@ -37,25 +37,28 @@ library(Hmsc)
 
 ```
 
+
 # Read data
 
 ```{r read data, echo=FALSE, warning=FALSE, message=FALSE}
 setwd("~/Github/HMS-Seagrass/Data")
 
 Y <- read.csv("Y_matrix.csv", header = TRUE, stringsAsFactors = FALSE)
+Y <- Y[-c(103,104),]
 rownames(Y) <- Y[,1]
-X <- read.csv("X_matrix.csv", header = TRUE, stringsAsFactors = FALSE) # Environmental covariate matrix (X)
-#X <- X[,-c(7,8,10)] #watch out! this is way of removing data can easily lead to mistakes if your column order changes
-X <- X %>% dplyr::select(-dissox) # this is a much safer way to remove data, prevents things messing up if the order of the columns changes
-rownames(X) <- Y[,1]
 
-spatial <- read.csv("coords.csv", header = TRUE, stringsAsFactors = FALSE) # lat&long coordinates
-rownames(spatial) <- Y[,1]
+X <- read.csv("X_matrix.csv", header = TRUE, stringsAsFactors = FALSE) # 
+rownames(X) <- X[,1]
+
+spatial <- read.csv("spatial_matrix.csv", header = TRUE, stringsAsFactors = FALSE) # lat&long coordinates
+rownames(spatial) <- spatial[,1]
 #spatial <- spatial[,-1] #why are you removing longitude, this would assume no spatial distance between sites at the same latitude but at different longitudes
 
 studyDesign <- read.csv("pi.csv", header = TRUE, stringsAsFactors = FALSE) #factors
 
 Y <- Y[,-1] #remove actual site names from Y matrix now that rownames for all datasets have been established
+X <- X[,-1]
+spatial <- spatial[,-1]
 
 ## Remove NA's / get into right format
 X[is.na(X)] <- 0
@@ -65,9 +68,9 @@ X <- as.data.frame(X)
 spatial <- as.data.frame(spatial)
 spatial$longitude <- spatial$longitude-min(spatial$longitude)
 
-#spat <- data.frame(spat = sprintf('spatial_%.2d',1:78)) #spatial factor column for studyDesign
-#studyDesign <- cbind(studyDesign, spat)
-studyDesign$Spatial <- factor(studyDesign$Quadrat)
+spat <- data.frame(spat = sprintf('spatial_%.2d',1:102)) #spatial factor column for studyDesign
+studyDesign <- cbind(studyDesign, spat)
+studyDesign$spat <- factor(studyDesign$Quadrat)
 
 rL1 = HmscRandomLevel(units = studyDesign$Quadrat)
 rL2 = HmscRandomLevel(units = studyDesign$Site)
@@ -79,15 +82,13 @@ rL4= HmscRandomLevel(sData = spatial)
 # Construct HMSC model object and fit with MCMC
 
 ```{r fit model, echo=FALSE, warning=FALSE, message=FALSE}
-# Construct and fit HMSC model
-#hM <- Hmsc(Y = Y, XData = X,XFormula = ~eelgrass_lai + ph + sstmean + nitrate + chlomean + salinity,  studyDesign = studyDesign, ranLevels = list(Quadrat = rL1, Site = rL2, Region = rL3, Spatial = rL4)) # I have selected only these variables because some covary (ggpairs analysis)
 
-hM <- Hmsc(Y = Y, XData = X, 
-           XFormula = ~eelgrass_lai + ph + sstmean + nitrate + chlomean + salinity, studyDesign = studyDesign, ranLevels = list(Quadrat = rL1, Site = rL2, Region = rL3, Spatial = rL4))
+
+hM <- Hmsc(Y = Y, XData = X, XFormula = ~eelgrass_lai + temprange + poly(tempmean, degree = 2) + nitratemean + curveloc + salinitymean + dissoxmean + macroalgae_biomass + detritus_biomass + shoot_density, studyDesign = studyDesign, ranLevels = list(Quadrat = rL1, Site = rL2, Region = rL3, spatial = rL4), distr = "poisson")
  
 # Run MCMC chains. took at least 12 hours on KS laptop
 
-mod <- sampleMcmc(hM, samples = 1000 , transient = 1000, thin = 100, verbose = 20000)
+mod <- sampleMcmc(hM, samples = 200 , transient = 100, thin = 100, verbose = 10)
 
 ```
 
@@ -96,13 +97,15 @@ We ensured MCMC chains were well-mixed for parameters beta (species niches/ resp
 
 ```{r evaluate markov chains}
 # computationally intense so #'d out these lines
-#mpost <- convertToCodaObject(mod)
-#par(mfrow=c(3,2))
-#ess.beta = effectiveSize(mpost$Beta)
-#psrf.beta = gelman.diag(mpost$Beta,multivariate=FALSE)$psrf hist(ess.beta)
-#hist(psrf.beta)
+mpost <- convertToCodaObject(mod)
+par(mfrow=c(3,2))
+ess.beta = effectiveSize(mpost$Beta)
+psrf.beta = gelman.diag(mpost$Beta,multivariate=FALSE)$psrf
+hist(ess.beta)
+hist(psrf.beta)
 #ess.gamma = effectiveSize(mpost$Gamma)
-#psrf.gamma = gelman.diag(mpost$Gamma,multivariate=FALSE)$psrf hist(ess.gamma)
+#psrf.gamma = gelman.diag(mpost$Gamma,multivariate=FALSE)$psrf 
+hist(ess.gamma)
 #hist(psrf.gamma)
 #sppairs = matrix(sample(x = 1:ns^2, size = 100))
 #tmp = mpost$Omega[[1]]
@@ -114,8 +117,366 @@ We ensured MCMC chains were well-mixed for parameters beta (species niches/ resp
 #hist(psrf.omega)
 ```
 
+
 ```{r variation partitioning}
-preds = computePredictedValues(mod)
-postBeta <- getPostEstimate(mod, parName = "Beta")
+partition <- createPartition(mod, nfolds = 2)
+preds1 <- computePredictedValues(mod)
+
+
+MF <- evaluateModelFit(hM = mod, predY = preds)
+
+#variance partitioning
+VP <- computeVariancePartitioning(mod, group = c(1,1,2,3,3,4,5,6,7,8,9,10), groupnames = c("Eelgrass LAI" ,"Temp range" ,"Mean temperature", "Mean nitrates" ,"Max current velocity" , "Mean salinity" , "Mean dissolved O2", "Macroalgae biomass", "Detritus biomass", "Eelgrass shoot density")) 
+
+plotVariancePartitioning(mod, VP = VP)
+
+VP.df <- as.data.frame(VP$vals) %>% 
+  mutate(effect = factor(c("Eelgrass LAI (0.7%)", "Temp range (17.4%)","Mean temperature (11.1%)",  "Mean nitrates (9.4%)","Max current velocity (10%)","Mean salinity (5.7%)", "Mean dissolved O2 (14.8%)", "Macroalgae biomass (1.1%)","Detritus biomass (0.7%)","Eelgrass shoot density (2%)", "Random: Quadrat (8.2%)","Random: Site (6.7%)", "Random: Region (3.2%)","Random: Spatial distance (9%)"), levels = rev(c("Eelgrass LAI (0.7%)", "Temp range (17.4%)","Mean temperature (11.1%)",  "Mean nitrates (9.4%)","Max current velocity (10%)","Mean salinity (5.7%)", "Mean dissolved O2 (14.8%)", "Macroalgae biomass (1.1%)","Detritus biomass (0.7%)","Eelgrass shoot density (2%)", "Random: Quadrat (8.2%)","Random: Site (6.7%)", "Random: Region (3.2%)","Random: Spatial distance (9%)")), ordered = TRUE)) 
+
+target <- c("Temp range (17.4%)","Mean temperature (11.1%)",  "Mean nitrates (9.4%)","Max current velocity (10%)","Mean salinity (5.7%)", "Mean dissolved O2 (14.8%)", "Macroalgae biomass (1.1%)","Detritus biomass (0.7%)","Eelgrass LAI (0.7%)", "Eelgrass shoot density (2%)", "Random: Quadrat (8.2%)","Random: Site (6.7%)", "Random: Region (3.2%)","Random: Spatial distance (9%)") # re-ordering factors so all biotic/biometrics are together for ease of looking
+
+VP.df$effect <- VP.df[match(target, VP.df$effect),]
+
+VP.df$effect <- c("Abiotic: Temp range (16%)","Abiotic: Mean temperature (14%)",  "Abiotic: Mean nitrates (8.9%)","Abiotic: Max current velocity (11%)","Abiotic: Mean salinity (3.6%)", "Abiotic: Mean dissolved O2 (14%)", "Biotic: Macroalgae biomass (1%)","Biotic: Detritus biomass (1.2%)","Biotic: Eelgrass shoot density (1.8%)", "Biotic: Eelgrass LAI (0.58%)", "Random: Quadrat (13%)","Random: Site (9.8%)", "Random: Region (4.9%)") # re-ordering factors so all biotic/biometrics are together for ease of looking
+
+VP.df1 <- read.csv("vpdf.csv", header=TRUE)
+colnames(VP.df1) <- spnames
+
+VP.df1 <- VP.df1 %>%
+  gather(key = taxon, value = Variance, -effect) 
+
+
+VP.df1 <- VP.df1%>% 
+  group_by(taxon) %>% 
+  mutate(mean = Variance)
+
+VP.df1$taxon <- factor(VP.df1$taxon, 
+                        levels = colnames(mod$Y)[order(colSums(mod$Y),decreasing = TRUE)], ordered = TRUE)
+
+R2.df <- data.frame(R2 = round(MF$SR2,1), taxon = colnames(mod$Y))
+
+par(mar=c(8,8,2.5,13))
+ggplot(VP.df1, aes(y = Variance, x = taxon, fill = factor(effect, levels = c("Temp range (17.4%)","Mean temperature (11.1%)",  "Mean nitrates (9.4%)","Max current velocity (10%)","Mean salinity (5.7%)", "Mean dissolved O2 (14.8%)", "Macroalgae biomass (1.1%)","Detritus biomass (0.7%)","Eelgrass LAI (0.7%)", "Eelgrass shoot density (2%)", "Random: Quadrat (8.2%)","Random: Site (6.7%)", "Random: Region (3.2%)","Random: Spatial distance (9%)"))))+
+  geom_bar(stat = "identity", color = 1)+
+  theme_classic()+
+  theme(axis.text.x = element_text(angle = 75, hjust = 1))+
+  scale_fill_manual(values = c("#F0F921FF","#F0F921FF","#F0F921FF","#F0F921FF","#F0F921FF","#F0F921FF", "#FCA636FF","#FCA636FF","#FCA636FF","#FCA636FF", "#E16462FF" ,"#B12A90FF" ,"#6A00A8FF" , "#0D0887FF"), name = "Mean variance explained across all species")+
+  geom_text(data = R2.df, aes(y = -0.02, fill = NULL, label = R2), size = 2)+
+  geom_point(data = R2.df, aes(y = -0.06, fill = NULL, size = R2))+
+  scale_size_continuous(breaks = seq(0.15,0.60,by = 0.15))+
+  xlab(label = "Species")
+
+`````
+
+
+
+
+```{r}
+# Species associations/ corrplots
+OmegaCor = computeAssociations(mod)
+supportLevel = 0.95
+
+toPlot = ((OmegaCor[[1]]$support>supportLevel)
++ (OmegaCor[[1]]$support<(1-supportLevel))>0)*OmegaCor[[1]]$mean
+
+toPlot2 = ((OmegaCor[[2]]$support>supportLevel)
++ (OmegaCor[[2]]$support<(1-supportLevel))>0)*OmegaCor[[2]]$mean
+
+toPlot3 = ((OmegaCor[[3]]$support>supportLevel)
++ (OmegaCor[[3]]$support<(1-supportLevel))>0)*OmegaCor[[3]]$mean
+library(corrplot)
+
+corrplot(toPlot, method = "color",col=colorRampPalette(c("#21908C","white","#440154"))(200),  tl.cex=.75, tl.col="black", title=paste("random effect level:", mod$rLNames[1]), mar=c(0,0,0,0))
+
+corrplot(toPlot2, method = "color",col=colorRampPalette(c("#21908C","white","#440154"))(200),  tl.cex=.75, tl.col="black", title=paste("random effect level:", mod$rLNames[2]), mar=c(0,0,1,0))
+
+corrplot(toPlot3, method = "color",col=colorRampPalette(c("#21908C","white","#440154"))(200), tl.cex=.75, tl.col="black", title=paste("random effect level:", mod$rLNames[3]), mar=c(0,0,1,0))
+
+corrplot(toPlot, method = "color",col=colorRampPalette(c("#21908C","white","#440154"))(200), order = "hclust", hclust.method= "ward.D2", tl.cex=.75, tl.col="black", title=paste("random effect level:", mod$rLNames[1]), mar=c(0,0,1,0))
+
+corrplot(toPlot2, method = "color",col=colorRampPalette(c("#21908C","white","#440154"))(200), order = "hclust" , hclust.method= "ward.D2", tl.cex=.75, tl.col="black", title=paste("random effect level:", mod$rLNames[2]), mar=c(0,0,1,0))
+
+corrplot(toPlot3, method = "color",col=colorRampPalette(c("#21908C","white","#440154"))(200), order = "hclust" , hclust.method = "ward.D2", tl.cex=.75, tl.col="black", title=paste("random effect level:", mod$rLNames[3]), mar=c(0,0,1,0))
 ```
 
+```{r}
+# create custom functions for heatmaps
+imagine1 <- function (comm, col = col, fill = TRUE, 
+                      xlab = "", ylab = "", yline = 2, xline = 2, sitenames = rownames(comm), 
+                      speciesnames = colnames(comm), binary = TRUE) 
+{
+  reverse <- nrow(comm):1
+  comm <- comm[reverse, ]
+  par(mar = c(1, 9, 11.2, 15))
+  
+  image(1:dim(comm)[2], 1:dim(comm)[1], t(comm), col = c("#00000000","#52525203","#52525205","#52525208","#5252520A","#5252520D","#5252520F","#52525212","#52525214","#52525217","#5252521A","#5252521C","#5252521F","#52525221","#52525224","#52525226","#52525229","#5252522B","#5252522E","#52525230","#52525233","#52525236","#52525238","#5252523B","#5252523D","#52525240","#52525242","#52525245","#52525247","#5252524A","#5252524D","#5252524F","#52525252","#52525254","#52525257","#52525259","#5252525C","#5252525E","#52525261","#52525263","#52525266","#52525269","#5252526B","#5252526E","#52525270","#52525273","#52525275","#52525278","#5252527A","#5252527D","#52525280","#52525282","#52525285","#52525287","#5252528A","#5252528C","#5252528F","#52525291","#52525294","#52525296","#52525299","#5252529C","#5252529E","#525252A1","#525252A3","#525252A6","#525252A8","#525252AD","#525252B0","#525252B3","#525252B5","#525252B8","#525252BA","#525252BD","#525252BF","#525252C2","#525252C4","#525252C7","#525252C9","#525252CC","#525252CF","#525252D1","#525252D4","#525252D6","#525252D9","#525252DB","#525252DE","#525252E0","#525252E3","#525252E6","#525252E8","#525252EB","#525252ED","#525252F0","#525252F2","#525252F5","#525252F7","#525252FA","#525252FC"), xlab = "", ylab = "", axes = FALSE)
+  box()
+  if (length(sitenames) > 1) {
+    axis(2, at = 1:dim(comm)[1], labels = sitenames, las = 1, 
+         cex.axis = 1, lwd.ticks = 0)
+  }
+  if (length(speciesnames) > 1) {
+    axis(3, at = 1:dim(comm)[2], labels = speciesnames, las = 2, 
+         cex.axis = 1, lwd.ticks = 0)
+  }
+  mtext(xlab, 3, cex = 1.5, line = xline)
+  mtext(ylab, 2, cex = 1.5, line = yline)
+}
+
+imagine2 <- function (comm, col = col, fill = TRUE, 
+                      xlab = "", ylab = "", yline = 2, xline = 2, sitenames = rownames(comm), 
+                      speciesnames = colnames(comm), binary = TRUE, add = TRUE) 
+{
+  reverse <- nrow(comm):1
+  comm <- comm[reverse, ]
+  par(mar = c(1, 9, 11.2, 15))
+  
+  image(1:dim(comm)[2], 1:dim(comm)[1], t(comm), col = c("#00000000","#21908C03","#21908C05","#21908C08","#21908C0A","#21908C0D","#21908C0F","#21908C12","#21908C14","#21908C17","#21908C1A","#21908C1C","#21908C1F","#21908C21","#21908C24","#21908C26","#21908C29","#21908C2B","#21908C2E","#21908C30","#21908C33","#21908C36","#21908C38","#21908C3B","#21908C3D","#21908C40","#21908C42","#21908C45","#21908C47","#21908C4A","#21908C4D","#21908C4F","#21908C52","#21908C54","#21908C57","#21908C59","#21908C5C","#21908C5E","#21908C61","#21908C63","#21908C66","#21908C69","#21908C6B","#21908C6E","#21908C70","#21908C73","#21908C75","#21908C78","#21908C7A","#21908C7D","#21908C80","#21908C82","#21908C85","#21908C87","#21908C8A","#21908C8C","#21908C8F","#21908C91","#21908C94","#21908C96","#21908C99","#21908C9C","#21908C9E","#21908CA1","#21908CA3","#21908CA6","#21908CA8","#21908CAD","#21908CB0","#21908CB3","#21908CB5","#21908CB8","#21908CBA","#21908CBD","#21908CBF","#21908CC2","#21908CC4","#21908CC7","#21908CC9","#21908CCC","#21908CCF","#21908CD1","#21908CD4","#21908CD6","#21908CD9","#21908CDB","#21908CDE","#21908CE0","#21908CE3","#21908CE6","#21908CE8","#21908CEB","#21908CED","#21908CF0","#21908CF2","#21908CF5","#21908CF7","#21908CFA","#21908CFC"), xlab = "", ylab = "", axes = FALSE, add = TRUE)
+  box()
+  if (length(sitenames) > 1) {
+    axis(2, at = 1:dim(comm)[1], labels = sitenames, las = 1, 
+         cex.axis = 1, lwd.ticks = 0)
+  }
+  if (length(speciesnames) > 1) {
+    axis(3, at = 1:dim(comm)[2], labels = speciesnames, las = 2, 
+         cex.axis = 1, lwd.ticks = 0)
+  }
+  mtext(xlab, 3, cex = 1.5, line = xline)
+  mtext(ylab, 2, cex = 1.5, line = yline)
+}
+
+imagine3 <- function (comm, col = col, fill = TRUE, 
+                      xlab = "", ylab = "", yline = 2, xline = 2, sitenames = rownames(comm), 
+                      speciesnames = colnames(comm), binary = TRUE, add = TRUE) 
+{
+  reverse <- nrow(comm):1
+  comm <- comm[reverse, ]
+  par(mar = c(1, 9, 11.2, 15))
+  
+  image(1:dim(comm)[2], 1:dim(comm)[1], t(comm), col = c("#00000000","#44015403","#44015405","#44015408","#4401540A","#4401540D","#4401540F","#44015412","#44015414","#44015417","#4401541A","#4401541C","#4401541F","#44015421","#44015424","#44015426","#44015429","#4401542B","#4401542E","#44015430","#44015433","#44015436","#44015438","#4401543B","#4401543D","#44015440","#44015442","#44015445","#44015447","#4401544A","#4401544D","#4401544F","#44015452","#44015454","#44015457","#44015459","#4401545C","#4401545E","#44015461","#44015463","#44015466","#44015469","#4401546B","#4401546E","#44015470","#44015473","#44015475","#44015478","#4401547A","#4401547D","#44015480","44015482","#44015487","#4401548A","#4401548C","#4401548F","#44015491","#44015494","#44015496","#44015499","#4401549C","#4401549E","#440154A1","#440154A3","#440154A6","#440154A8","#440154AD","#440154B0","#440154B3","#440154B5","#440154B8","#440154BA","#440154BD","#440154BF","#440154C2","#440154C4","#440154C7","#440154C9","#440154CC","#440154CF","#440154D1","#440154D4","#440154D6","#440154D9","#440154DB","#440154DE","#440154E0","#440154E3","#440154E6","#440154E8","#440154EB","#440154ED","#440154F0","#440154F2","#440154F5","#440154F7","#440154FA","#440154FC"), xlab = "", ylab = "", axes = FALSE, add = TRUE)
+  box()
+  if (length(sitenames) > 1) {
+    axis(2, at = 1:dim(comm)[1], labels = sitenames, las = 1, 
+         cex.axis = 1, lwd.ticks = 0)
+  }
+  if (length(speciesnames) > 1) {
+    axis(3, at = 1:dim(comm)[2], labels = speciesnames, las = 2, 
+         cex.axis = 1, lwd.ticks = 0)
+  }
+  mtext(xlab, 3, cex = 1.5, line = xline)
+  mtext(ylab, 2, cex = 1.5, line = yline)
+}
+
+```
+
+
+```{r}
+# setup data for corrplot
+yo <- cbind(studyDesign, Y)
+yo1 <- yo %>%
+  select(-Spatial, -Quadrat,-Region,-spat,-spatial)
+yo2 <- yo1 %>%
+  group_by(Site) %>%
+  summarise_each(funs(sum))
+  
+yo3 <- yo2 %>%
+  select(c(Spirorbis.sp,Leptochelia.sp,Harpacticoid1,Lacuna.spp,Nereis.sp,Aoroides.spp,Porcellidium.sp,Alvania.compacta,Caprella.laeviuscula,Unknown.Ischyoceridae.gammarid))
+
+topten <- cbind(yo2$Site, yo3)
+rownames(topten) <- topten$`yo2$Site`
+
+topten <- topten %>%
+  select(-`yo2$Site`)
+
+topten
+
+
+#### extract 10 most abundant from toplots
+quad_cor <- toPlot[c(11,26,28,5,12,16,27,2,23,21),c(11,26,28,5,12,16,27,2,23,21)]
+site_cor <- toPlot2[c(11,26,28,5,12,16,27,2,23,21),c(11,26,28,5,12,16,27,2,23,21)]
+reg_cot <- toPlot3[c(11,26,28,5,12,16,27,2,23,21),c(11,26,28,5,12,16,27,2,23,21)]
+
+par(mfrow=c(1,1))
+
+corrplot(quad_cor, method = "color",col=colorRampPalette(c("#21908C","white","#440154"))(200), order = "hclust", hclust.method= "ward.D2", tl.cex=.75, tl.col="black")
+
+corrplot(site_cor, method = "color",col=colorRampPalette(c("#21908C","white","#440154"))(200), order = "hclust" , hclust.method= "ward.D2", tl.cex=.75, tl.col="black")
+
+corrplot(reg_cot, method = "color",col=colorRampPalette(c("#21908C","white","#440154"))(200), order = "hclust" , hclust.method = "ward.D2", tl.cex=.75, tl.col="black")
+
+
+##hrowing the original code here in case i need it again..
+corrplot(quad_cor, method = "color",col=colorRampPalette(c("#21908C","white","#440154"))(200), order = "hclust", hclust.method= "ward.D2", tl.cex=.3, tl.col="black", title=paste("random effect level:", mod$rLNames[1]), mar=c(0,0,1,0))
+corrplot(site_cor, method = "color",col=colorRampPalette(c("#21908C","white","#440154"))(200), order = "hclust" , hclust.method= "ward.D2", tl.cex=.3, tl.col="black", title=paste("random effect level:", mod$rLNames[2]), mar=c(0,0,1,0))
+corrplot(reg_cot, method = "color",col=colorRampPalette(c("#21908C","white","#440154"))(200), order = "hclust" , hclust.method = "ward.D2", tl.cex=.3, tl.col="black", title=paste("random effect level:", mod$rLNames[3]), mar=c(0,0,1,0))
+
+#making new matrices for heatmap
+
+blues <- matrix(nrow = nrow(topten), ncol=ncol(topten))
+blues[,c(3,7,10)] <- topten[,c(3,7,10)]
+blues[,-c(3,7,10)] <- 0
+rownames(blues) <- rownames(topten)
+colnames(blues) <- colnames(topten)
+
+purples <- matrix(nrow = nrow(topten), ncol=ncol(topten))
+purples[,c(1,2,5,9)] <- topten[,c(1,2,5,9)]
+purples[,-c(1,2,5,9)] <- 0
+rownames(purples) <- rownames(topten)
+colnames(purples) <- colnames(topten)
+
+greys <- matrix(nrow = nrow(topten), ncol=ncol(topten))
+greys[,c(4,6,8)] <- topten[,c(4,6,8)]
+greys[,-c(4,6,8)] <- 0
+rownames(greys) <- rownames(topten)
+colnames(greys) <- colnames(topten)
+##### 
+blues <- matrix(nrow = nrow(predo2), ncol=ncol(predo2))
+blues[,c(3,7,10)] <- predo2[,c(3,7,10)]
+blues[,-c(3,7,10)] <- 0
+rownames(blues) <- rownames(predo2)
+colnames(blues) <- colnames(predo2)
+
+purples <- matrix(nrow = nrow(predo2), ncol=ncol(predo2))
+purples[,c(1,2,5,9)] <-predo2[,c(1,2,5,9)]
+purples[,-c(1,2,5,9)] <- 0
+rownames(purples) <- rownames(predo2)
+colnames(purples) <- colnames(predo2)
+
+greys <- matrix(nrow = nrow(predo2), ncol=ncol(predo2))
+greys[,c(4,6,8)] <- predo2[,c(4,6,8)]
+greys[,-c(4,6,8)] <- 0
+rownames(greys) <- rownames(predo2)
+colnames(greys) <- colnames(predo2)
+
+#set graphical parameters
+
+
+
+# Make cluster dendrogram with predicted site-level abundances 
+pred.site <-read.csv("predsite.csv", header = TRUE, stringsAsFactors = FALSE)
+predo <- cbind(studyDesign, preds)
+predo <- as.matrix(predo)
+predo1 <- predo %>%
+  select(-Spatial, -Quadrat,-Region,-spat,-spatial)
+
+predo3 <-predo1 %>%
+  group_by(Site) %>%
+  summarise_each(funs(sum)) %>%
+  select(Spirorbis.sp,Leptochelia.sp,Harpacticoid1,Lacuna.spp,Nereis.sp,Aoroides.spp,Porcellidium.sp,Alvania.compacta,Caprella.laeviuscula,Unknown.Ischyoceridae.gammarid)
+
+predo3 <- as.matrix(predo3)
+rownames(predo3) <- rownames(topten)
+
+par(mar = c(0.55, 26, 10.85, 0.35))
+dendo  <- decostand(predo3, method = "normalize") %>% dist %>% hclust %>% as.dendrogram %>%   set("branches_k_color", k = 3, value = c("#440154","#440154","#21908C" )) %>% set("labels", NULL) %>%    set("by_labels_branches_lwd", value = c(1:10)) %>% plot_horiz.dendrogram(axes = FALSE) 
+
+#now that we've seen how the dendrogram falls out, time to make the imagine feed-in matrix rows match that order so the sites correspond correctly
+#target <- c("Sarita", "Robbers","Sidney_Spit","Lyall_Harbour","Elbow_Bank", "Ducking", "Triquet_North" , "Triquet_Bay" ,"Ramsay","Choked_Inner","Gallagher_Bay","Cabbage_Isl", "James_Bay","Sandspit", "Dodger_Channel","Indian", "Louscoone")
+
+#predo2 <- read.csv("predicteds.csv")
+
+par(new = TRUE) # this line is important or else heatmap will replace dendrogram
+
+imagine1(greys) #old colour scheme, modelled sp counts
+imagine2(blues)
+imagine3(purples)
+```
+
+
+```{r} 
+#distance-decay
+library(reshape2)
+distframe <- melt(as.matrix(distmat), varnames = c("row", "col"))
+
+df[df$row > df$col,]
+```
+
+
+
+```
+
+
+
+```{r}
+library(ggplot2)
+library(maps)
+library(mapdata)
+library(grid)
+
+wholespatial <- read.csv("wholesitespatial.csv", header = TRUE, stringsAsFactors = FALSE)
+plot.new()
+par(mar = c(0,0,0,0))
+big <- map("worldHires", "Canada", xlim = c(-131.7,-123), ylim=c(48.9, 53) , fill = TRUE, col = "grey80")
+
+par(new = TRUE)
+
+rect(-125.5763-0.1, 49.11286-0.1, -126.1426+0.1, 49.19492+0.1, col=NULL, border="firebrick", xpd=FALSE) # clayoquot sound
+
+rect(-125.1469-0.1, 48.83528-0.1, -125.08+0.1, 48.89597+0.1, col=NULL, border="firebrick", xpd=FALSE) # barkley sound
+
+
+rect(-131.4826-0.1, 52.23015-0.1,  -131.2062+0.1, 52.56887+0.1, col=NULL, border="firebrick", xpd=FALSE) # haida gwaii
+
+rect(-122.9-0.1, 48.44074-0.1, -123.6972+0.1, 48.94043+0.1, col=NULL, border="firebrick", xpd=FALSE) # gulf islands
+
+
+rect(-128.12+0.1, 51.67-0.1, -128.25-0.2, 51.81+0.1, col=NULL, border="firebrick", xpd=FALSE) # calvert
+
+
+points(spatial$longitude, spatial$latitude, pch=21, col="black", bg = "blue", cex=0.8) 
+
+HG <-locator(1) #specify where i want labels and legend to be with my cursor
+CS <-locator(1)
+BS <-locator(1)
+GI <-locator(1)
+HK <- locator(1)
+text(HG,"Haida Gwaii", cex = 0.75)
+text(CS,"Clayoquot Sound", cex = 0.75)
+text(BS,"Barkley Sound", cex = 0.75)
+text(GI,"Gulf Islands", cex = 0.75)
+text(HK,"Central Coast", cex = 0.75)
+
+map.scale(x = -131.6, y = 48.5, ratio = FALSE, cex = 0.72)
+```
+
+```{r}
+
+
+```
+
+
+```{r}
+#Gathering Bio-ORACLE covariates
+install.packages("sdmpredictors")
+install.packages("leaflet")
+# Load package
+library(sdmpredictors)
+library(leaflet)
+
+# Explore datasets in the package
+list_datasets()
+
+# Explore layers in a dataset
+list_layers("Bio-ORACLE")
+
+# Download specific layers to the current directory
+layers <- load_layers(layercodes = c("BO2_nitraterange_bdmax", "BO2_tempmean_bdmax", "BO2_temprange_bdmax", "BO2_curvelmax_bdmax", "BO2_nitratemean_bdmax", "BO2_salinityrange_bdmax", "BO2_salinitymean_bdmax", "BO_ph", "BO2_dissoxmean_bdmax", "BO2_dissoxrange_bdmax"),equalarea=FALSE, rasterstack=TRUE)
+
+bathy <- load_layers("BO_bathymean")
+
+# Visualise sites of interest in google maps
+m <- leaflet()
+m <- addTiles(m)
+m <- addMarkers(m, lng=spatial$longitude, lat=spatial$latitude, popup=spatial$quad)
+m
+
+# Extract environmental values from layers
+environment <- data.frame(Name=spatial$quad,depth=extract(bathy,spatial[,2:3]) , env = raster::extract(layers,spatial[,2:3]))
+write.csv(environment, file = "env.csv")
+
+# Check layer statistics
+layer_stats()
+
+# Check Pearson correlation coefficient between layers
+layers_correlation()
+```
