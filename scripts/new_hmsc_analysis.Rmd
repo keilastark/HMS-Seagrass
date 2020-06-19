@@ -9,7 +9,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-# Install and Library Packages
+# Install and load Packages
 
 ```{r packages, echo = FALSE, warning=FALSE, message=FALSE}
 
@@ -52,13 +52,13 @@ rownames(X) <- X[,1]
 
 spatial <- read.csv("spatial_matrix.csv", header = TRUE, stringsAsFactors = FALSE) # lat&long coordinates
 rownames(spatial) <- spatial[,1]
-#spatial <- spatial[,-1] #why are you removing longitude, this would assume no spatial distance between sites at the same latitude but at different longitudes
+
 
 studyDesign <- read.csv("pi.csv", header = TRUE, stringsAsFactors = FALSE) #factors
 
 Y <- Y[,-1] #remove actual site names from Y matrix now that rownames for all datasets have been established
 X <- X[,-1]
-spatial <- spatial[,-1]
+
 
 ## Remove NA's / get into right format
 X[is.na(X)] <- 0
@@ -68,8 +68,8 @@ X <- as.data.frame(X)
 spatial <- as.data.frame(spatial)
 spatial$longitude <- spatial$longitude-min(spatial$longitude)
 
-spat <- data.frame(spat = sprintf('spatial_%.2d',1:102)) #spatial factor column for studyDesign
-studyDesign <- cbind(studyDesign, spat)
+spatial <- data.frame(spatial = sprintf('spatial_%.2d',1:102)) #spatial factor column for studyDesign
+studyDesign <- cbind(studyDesign, spatial)
 studyDesign$spat <- factor(studyDesign$Quadrat)
 
 rL1 = HmscRandomLevel(units = studyDesign$Quadrat)
@@ -79,16 +79,18 @@ rL4= HmscRandomLevel(sData = spatial)
 ```
 
 
+
+
 # Construct HMSC model object and fit with MCMC
 
 ```{r fit model, echo=FALSE, warning=FALSE, message=FALSE}
 
 
-hM <- Hmsc(Y = Y, XData = X, XFormula = ~eelgrass_lai + temprange + poly(tempmean, degree = 2) + nitratemean + curveloc + salinitymean + dissoxmean + macroalgae_biomass + detritus_biomass + shoot_density, studyDesign = studyDesign, ranLevels = list(Quadrat = rL1, Site = rL2, Region = rL3, spatial = rL4), distr = "poisson")
+hM <- Hmsc(Y = Y, XData = X, XFormula = ~eelgrass_lai + temprange + tempmean + nitratemean + curveloc + salinitymean + dissoxmean + macroalgae_biomass + detritus_biomass + shoot_density, studyDesign = studyDesign, ranLevels = list(Quadrat = rL1, Site = rL2, Region = rL3, spat = rL4), distr = "poisson")
  
-# Run MCMC chains. took at least 12 hours on KS laptop
+# Run MCMC chains. 
 
-mod <- sampleMcmc(hM, samples = 200 , transient = 100, thin = 100, verbose = 10)
+mod_V2 <- sampleMcmc(hM, samples = 200000 , transient = 1000, thin = 100, verbose = 10)
 
 ```
 
@@ -118,26 +120,36 @@ hist(ess.gamma)
 ```
 
 
+```{r}
+par(mar = c(8,14,1,4))
+postBeta = getPostEstimate(mod, parName = "Beta")
+plotBeta(mod, post = postBeta, param = "Support", supportLevel = 0.95)
+```
+
 ```{r variation partitioning}
 partition <- createPartition(mod, nfolds = 2)
-preds1 <- computePredictedValues(mod)
-
+partition <- createPartition(mod1, nfolds = 2)
+preds_fullmodel <- computePredictedValues(mod, partition = partition)
+preds_no_env <- computePredictedValues(mod1, partition = partition)
 
 MF <- evaluateModelFit(hM = mod, predY = preds)
 
 #variance partitioning
-VP <- computeVariancePartitioning(mod, group = c(1,1,2,3,3,4,5,6,7,8,9,10), groupnames = c("Eelgrass LAI" ,"Temp range" ,"Mean temperature", "Mean nitrates" ,"Max current velocity" , "Mean salinity" , "Mean dissolved O2", "Macroalgae biomass", "Detritus biomass", "Eelgrass shoot density")) 
+VP <- computeVariancePartitioning(mod)
+VP <- computeVariancePartitioning(mod, group = c(1,2,3,3,4,5,6,7,8,9,10), groupnames = c("Eelgrass LAI" ,"Temp range" ,"Mean temperature", "Mean nitrates" ,"Max current velocity" , "Mean salinity" , "Mean dissolved O2", "Macroalgae biomass", "Detritus biomass", "Eelgrass shoot density")) 
 
-plotVariancePartitioning(mod, VP = VP)
+VP.test <- computeVariancePartitioning(mod)
+
+plotVariancePartitioning(mod, VP = VP)# use default function from hmsc package to see mean variance explained for each covariate, then print manually below...
 
 VP.df <- as.data.frame(VP$vals) %>% 
-  mutate(effect = factor(c("Eelgrass LAI (0.7%)", "Temp range (17.4%)","Mean temperature (11.1%)",  "Mean nitrates (9.4%)","Max current velocity (10%)","Mean salinity (5.7%)", "Mean dissolved O2 (14.8%)", "Macroalgae biomass (1.1%)","Detritus biomass (0.7%)","Eelgrass shoot density (2%)", "Random: Quadrat (8.2%)","Random: Site (6.7%)", "Random: Region (3.2%)","Random: Spatial distance (9%)"), levels = rev(c("Eelgrass LAI (0.7%)", "Temp range (17.4%)","Mean temperature (11.1%)",  "Mean nitrates (9.4%)","Max current velocity (10%)","Mean salinity (5.7%)", "Mean dissolved O2 (14.8%)", "Macroalgae biomass (1.1%)","Detritus biomass (0.7%)","Eelgrass shoot density (2%)", "Random: Quadrat (8.2%)","Random: Site (6.7%)", "Random: Region (3.2%)","Random: Spatial distance (9%)")), ordered = TRUE)) 
+  mutate(effect = factor(c("Eelgrass LAI (0.7%)", "Temp range (17%)","Mean temperature (9.8%)",  "Mean nitrates (8.7%)","Max current velocity (9%)","Mean salinity (4.8%)", "Mean dissolved O2 (12.9%)", "Macroalgae biomass (1%)","Detritus biomass (0.8%)","Eelgrass shoot density (2%)", "Random: Quadrat (10.7%)","Random: Site (9.5%)", "Random: Region (5.2%)","Random: Spatial distance (7.9%)"), levels = rev(c("Eelgrass LAI (0.7%)", "Temp range (17%)","Mean temperature (9.8%)",  "Mean nitrates (8.7%)","Max current velocity (9%)","Mean salinity (4.8%)", "Mean dissolved O2 (12.9%)", "Macroalgae biomass (1%)","Detritus biomass (0.8%)","Eelgrass shoot density (2%)", "Random: Quadrat (10.7%)","Random: Site (9.5%)", "Random: Region (5.2%)","Random: Spatial distance (7.9%)")), ordered = TRUE)) 
 
-target <- c("Temp range (17.4%)","Mean temperature (11.1%)",  "Mean nitrates (9.4%)","Max current velocity (10%)","Mean salinity (5.7%)", "Mean dissolved O2 (14.8%)", "Macroalgae biomass (1.1%)","Detritus biomass (0.7%)","Eelgrass LAI (0.7%)", "Eelgrass shoot density (2%)", "Random: Quadrat (8.2%)","Random: Site (6.7%)", "Random: Region (3.2%)","Random: Spatial distance (9%)") # re-ordering factors so all biotic/biometrics are together for ease of looking
+target <- c("Temp range (17%)","Mean temperature (9.8%)",  "Mean nitrates (8.7%)","Max current velocity (9%)","Mean salinity (4.8%)", "Mean dissolved O2 (12.9%)", "Macroalgae biomass (1%)","Detritus biomass (0.8%)","Eelgrass LAI (0.7%)","Eelgrass shoot density (2%)", "Random: Quadrat (10.7%)","Random: Site (9.5%)", "Random: Region (5.2%)","Random: Spatial distance (7.9%)") # re-ordering factors so all biotic/biometrics are together for ease of looking
 
 VP.df$effect <- VP.df[match(target, VP.df$effect),]
 
-VP.df$effect <- c("Abiotic: Temp range (16%)","Abiotic: Mean temperature (14%)",  "Abiotic: Mean nitrates (8.9%)","Abiotic: Max current velocity (11%)","Abiotic: Mean salinity (3.6%)", "Abiotic: Mean dissolved O2 (14%)", "Biotic: Macroalgae biomass (1%)","Biotic: Detritus biomass (1.2%)","Biotic: Eelgrass shoot density (1.8%)", "Biotic: Eelgrass LAI (0.58%)", "Random: Quadrat (13%)","Random: Site (9.8%)", "Random: Region (4.9%)") # re-ordering factors so all biotic/biometrics are together for ease of looking
+VP.df$effect <- c("Temp range (17%)","Mean temperature (9.8%)",  "Mean nitrates (8.7%)","Max current velocity (9%)","Mean salinity (4.8%)", "Mean dissolved O2 (12.9%)", "Macroalgae biomass (1%)","Detritus biomass (0.8%)","Eelgrass LAI (0.7%)","Eelgrass shoot density (2%)", "Random: Quadrat (10.7%)","Random: Site (9.5%)", "Random: Region (5.2%)","Random: Spatial distance (7.9%)") # re-ordering factors so all biotic/biometrics are together for ease of looking
 
 VP.df1 <- read.csv("vpdf.csv", header=TRUE)
 colnames(VP.df1) <- spnames
@@ -156,11 +168,11 @@ VP.df1$taxon <- factor(VP.df1$taxon,
 R2.df <- data.frame(R2 = round(MF$SR2,1), taxon = colnames(mod$Y))
 
 par(mar=c(8,8,2.5,13))
-ggplot(VP.df1, aes(y = Variance, x = taxon, fill = factor(effect, levels = c("Temp range (17.4%)","Mean temperature (11.1%)",  "Mean nitrates (9.4%)","Max current velocity (10%)","Mean salinity (5.7%)", "Mean dissolved O2 (14.8%)", "Macroalgae biomass (1.1%)","Detritus biomass (0.7%)","Eelgrass LAI (0.7%)", "Eelgrass shoot density (2%)", "Random: Quadrat (8.2%)","Random: Site (6.7%)", "Random: Region (3.2%)","Random: Spatial distance (9%)"))))+
+ggplot(VP.df1, aes(y = Variance, x = taxon, fill = factor(effect, levels = c("Temp range (17%)","Mean temperature (9.8%)",  "Mean nitrates (8.7%)","Max current velocity (9%)","Mean salinity (4.8%)", "Mean dissolved O2 (12.9%)", "Macroalgae biomass (1%)","Detritus biomass (0.8%)","Eelgrass LAI (0.7%)","Eelgrass shoot density (2%)", "Random: Quadrat (10.7%)","Random: Site (9.5%)", "Random: Region (5.2%)","Random: Spatial distance (7.9%)"))))+
   geom_bar(stat = "identity", color = 1)+
   theme_classic()+
   theme(axis.text.x = element_text(angle = 75, hjust = 1))+
-  scale_fill_manual(values = c("#F0F921FF","#F0F921FF","#F0F921FF","#F0F921FF","#F0F921FF","#F0F921FF", "#FCA636FF","#FCA636FF","#FCA636FF","#FCA636FF", "#E16462FF" ,"#B12A90FF" ,"#6A00A8FF" , "#0D0887FF"), name = "Mean variance explained across all species")+
+  scale_fill_manual(values = c("#F0F921FF","#F0F921FF","#F0F921FF","#F0F921FF","#F0F921FF","#F0F921FF", "#BB3754FF","#BB3754FF","#BB3754FF","#BB3754FF", "grey30" ,"grey40" ,"grey50" , "grey60"), name = "Mean variance explained across all species")+
   geom_text(data = R2.df, aes(y = -0.02, fill = NULL, label = R2), size = 2)+
   geom_point(data = R2.df, aes(y = -0.06, fill = NULL, size = R2))+
   scale_size_continuous(breaks = seq(0.15,0.60,by = 0.15))+
@@ -170,19 +182,19 @@ ggplot(VP.df1, aes(y = Variance, x = taxon, fill = factor(effect, levels = c("Te
 
 
 
-
+# Species associations/ correlation plots
 ```{r}
-# Species associations/ corrplots
-OmegaCor = computeAssociations(mod)
+
+OmegaCor = computeAssociations(mod) #compute omega parameter
 supportLevel = 0.95
 
-toPlot = ((OmegaCor[[1]]$support>supportLevel)
+toPlot1 = ((OmegaCor[[1]]$support>supportLevel) # first-pass of quadrat level associations
 + (OmegaCor[[1]]$support<(1-supportLevel))>0)*OmegaCor[[1]]$mean
 
 toPlot2 = ((OmegaCor[[2]]$support>supportLevel)
-+ (OmegaCor[[2]]$support<(1-supportLevel))>0)*OmegaCor[[2]]$mean
++ (OmegaCor[[2]]$support<(1-supportLevel))>0)*OmegaCor[[2]]$mean # first-pass of site-level associations
 
-toPlot3 = ((OmegaCor[[3]]$support>supportLevel)
+toPlot3 = ((OmegaCor[[3]]$support>supportLevel) #first-pass of region-level associations
 + (OmegaCor[[3]]$support<(1-supportLevel))>0)*OmegaCor[[3]]$mean
 library(corrplot)
 
@@ -288,13 +300,12 @@ rownames(topten) <- topten$`yo2$Site`
 topten <- topten %>%
   select(-`yo2$Site`)
 
-topten
 
+#### extract 20 most abundant from toplots
+quad_cor <- toPlot1[c(11,26,28,5,12,16,27,2,23,21,22,9,17,19,20,30,24,6,4,3),c(11,26,28,5,12,16,27,2,23,21,22,9,17,19,20,30,24,6,4,3)]
+site_cor <- toPlot2[c(11,26,28,5,12,16,27,2,23,21,22,9,17,19,20,30,24,6,4,3),c(11,26,28,5,12,16,27,2,23,21,22,9,17,19,20,30,24,6,4,3)]
+reg_cor <- toPlot3[c(11,26,28,5,12,16,27,2,23,21,22,9,17,19,20,30,24,6,4,3),c(11,26,28,5,12,16,27,2,23,21,22,9,17,19,20,30,24,6,4,3)]
 
-#### extract 10 most abundant from toplots
-quad_cor <- toPlot[c(11,26,28,5,12,16,27,2,23,21),c(11,26,28,5,12,16,27,2,23,21)]
-site_cor <- toPlot2[c(11,26,28,5,12,16,27,2,23,21),c(11,26,28,5,12,16,27,2,23,21)]
-reg_cot <- toPlot3[c(11,26,28,5,12,16,27,2,23,21),c(11,26,28,5,12,16,27,2,23,21)]
 
 par(mfrow=c(1,1))
 
@@ -302,13 +313,13 @@ corrplot(quad_cor, method = "color",col=colorRampPalette(c("#21908C","white","#4
 
 corrplot(site_cor, method = "color",col=colorRampPalette(c("#21908C","white","#440154"))(200), order = "hclust" , hclust.method= "ward.D2", tl.cex=.75, tl.col="black")
 
-corrplot(reg_cot, method = "color",col=colorRampPalette(c("#21908C","white","#440154"))(200), order = "hclust" , hclust.method = "ward.D2", tl.cex=.75, tl.col="black")
+corrplot(reg_cor, method = "color",col=colorRampPalette(c("#21908C","white","#440154"))(200), order = "hclust" , hclust.method = "ward.D2", tl.cex=.75, tl.col="black")
 
 
 ##hrowing the original code here in case i need it again..
 corrplot(quad_cor, method = "color",col=colorRampPalette(c("#21908C","white","#440154"))(200), order = "hclust", hclust.method= "ward.D2", tl.cex=.3, tl.col="black", title=paste("random effect level:", mod$rLNames[1]), mar=c(0,0,1,0))
 corrplot(site_cor, method = "color",col=colorRampPalette(c("#21908C","white","#440154"))(200), order = "hclust" , hclust.method= "ward.D2", tl.cex=.3, tl.col="black", title=paste("random effect level:", mod$rLNames[2]), mar=c(0,0,1,0))
-corrplot(reg_cot, method = "color",col=colorRampPalette(c("#21908C","white","#440154"))(200), order = "hclust" , hclust.method = "ward.D2", tl.cex=.3, tl.col="black", title=paste("random effect level:", mod$rLNames[3]), mar=c(0,0,1,0))
+corrplot(reg_cor, method = "color",col=colorRampPalette(c("#21908C","white","#440154"))(200), order = "hclust" , hclust.method = "ward.D2", tl.cex=.3, tl.col="black", title=paste("random effect level:", mod$rLNames[3]), mar=c(0,0,1,0))
 
 #making new matrices for heatmap
 
@@ -348,9 +359,6 @@ greys[,-c(4,6,8)] <- 0
 rownames(greys) <- rownames(predo2)
 colnames(greys) <- colnames(predo2)
 
-#set graphical parameters
-
-
 
 # Make cluster dendrogram with predicted site-level abundances 
 pred.site <-read.csv("predsite.csv", header = TRUE, stringsAsFactors = FALSE)
@@ -382,21 +390,81 @@ imagine2(blues)
 imagine3(purples)
 ```
 
-
+# FIG 1b : Distance-decay of community similarity with model, raw data, and model but with environmental covariates set to mean values
 ```{r} 
 #distance-decay
-library(reshape2)
-distframe <- melt(as.matrix(distmat), varnames = c("row", "col"))
+library(vegan)
+library(reshape)
 
-df[df$row > df$col,]
+mod1 <- mod 
+mod1$X <- matrix(rep(colMeans(mod1$X),each=n),
+                      nrow=n,ncol=ncol(mod1$X)) #create version of the model where env covariates set to mean value
+
+partition <- createPartition(mod, nfolds = 4)
+preds_fullmodel <- computePredictedValues(mod, partition = partition) 
+partition <- createPartition(mod1, nfolds = 4)
+preds_no_env <- computePredictedValues(mod1, partition = partition) #model with mean env covariates
+
+rawdist <- vegdist(Y, method = "bray") # calculate BC dissimilarity for raw data
+rawdistlong <- subset(melt(as.matrix(rawdist)), value!=0)
+
+preds_fullmodel1 <- preds_fullmodel[,,mean(1:200)] #mean of 200 slices
+predmat <- vegdist(preds_fullmodel1, method = "bray" ) #calculate BC dissimilarity for PREDICTED data
+predmatlong <- subset(melt(as.matrix(predmat)), value!=0)
+
+preds_no_env1 <- preds_no_env[,,mean(1:200)] #take mean of all slices
+no_env_mat<- vegdist(preds_no_env1, method = "bray") #calculate BC dissimilarity for predicted data with no effect of covariates (spatial distance and random effects only)
+no_env_mat_long <- subset(melt(as.matrix(no_env_mat)), value!=0)
+
+#PREPARED GEOGRAPHIC/ SPATIAL DISTANCE MATRIX
+spatdistmat <- vegdist(spatial, method = "euclidean")  #melt the spatial distance matrix
+spatdistmat1 <- spatdistmat*111 #convert lat/long degrees to kilometres
+spatdistlong1 <- subset(melt(as.matrix(spatdistmat1)), value!=0)
+#corrdist <- distancedecay2$`Spatial distance`*111
+
+#COMBINE ALL LONG FORM DISTANCE DATA INTO ONE DATA FRAME
+distancedecay <- cbind(predmatlong, no_env_mat_long, rawdistlong, spatdistlong1)
+distancedecay1 <- distancedecay[,c(3,6,7,8,9,12)] #remove redundant columns 
+colnames(distancedecay1) <- c("hmsc_dissim", "hmsc_noenv_dissim", "Site1", "Site2","raw_dissim","Spatial distance") #rename columns for ease of understanding
+
+
+fullpredlm <- lm(distancedecay1$hmsc_dissim~distancedecay1$`Spatial distance`)
+noenvlm <- lm(distancedecay1$hmsc_noenv_dissim~distancedecay1$`Spatial distance`)
+rawlm <- lm(distancedecay1$raw_dissim~distancedecay1$`Spatial distance`)
+#abline(fullpredlm)
+#anova(distdeclm)
+#anova(avglm)
+#abline(avglm)
+
+col1 <- rgb(253,231,37, max = 255, alpha = 20) 
+col2 <- rgb(33,144,140, max = 255, alpha = 20)
+col3 <- rgb(68,1,84, max = 255, alpha = 20)
+
+par(mar = c(7,6,1,1)) #setup graphics parameters 
+par(oma = c(4, 1, 1, 1))
+plot.new()
+
+plot(distancedecay1$hmsc_dissim~jitter(distancedecay1$`Spatial distance`), pch = 1,cex = 2, col=col1, xlab = "", ylab = "")
+mtext(side=1, line=2, "Pairwise distance between samples (km)", font=2,cex=1.2)
+mtext(side=2, line=3, "Pairwise Bray-Curtis dissimilarity index",  font=2, cex=1.2)
+points(jitter(distancedecay1$raw_dissim)~jitter(distancedecay1$`Spatial distance`),pch=3,col=col3,xaxt='n',yaxt="n")
+points(jitter(distancedecay1$hmsc_noenv_dissim)~jitter(distancedecay1$`Spatial distance`),pch=2,col=col2,xaxt='n',yaxt="n")
+abline(fullpredlm,col="#440154FF",lwd = 4, lty =2)
+abline(noenvlm,col="#21908CFF",  lwd = 4, lty = 2)
+abline(rawlm, col = "#FDE725FF", lwd = 4, lty = 1)
+par(xpd = FALSE)
+legend("bottomleft",inset = c(0.3,0.001), legend=c("Full model (Space + environmental covariates)","Spatial distance + random effects only (no effect of environment)", "Real data"),col=c("#440154FF","#21908CFF", "#FDE725FF") ,cex= 0.9, lty=c(2,2,1), lwd = 4, bty = "n")
+
+distancedecay2 <- distancedecay1 %>%
+  select("Spatial distance", "hmsc_dissim", "hmsc_noenv_dissim", "raw_dissim") %>%
+  gather(-`Spatial distance`, key = "variable", value = "value")
+
+ggplot(distancedecay2, aes(x = `Spatial distance`, y = value))+  geom_point(aes(shape = variable, color = variable), alpha = 0.05) + xlab("Pairwise spatial distance (km)") + geom_smooth(aes(color = variable, fill = variable), method = "lm", se = TRUE) +ylab("Bray-Curtis pairwise dissimilarity between samples")  + scale_color_viridis(discrete = TRUE, option = "D", labels = c("Full model (Space + environmental covariates)","Spatial autocorrelation/random effects only (no effect of environment)", "Real data")) + scale_fill_viridis(discrete = TRUE) + theme_classic() + theme(legend.title = element_blank()) + theme(legend.position = "none")
+
 ```
 
 
-
-```
-
-
-
+# FIGURE 1a : MAP OF STUDY SITES
 ```{r}
 library(ggplot2)
 library(maps)
@@ -439,14 +507,9 @@ text(HK,"Central Coast", cex = 0.75)
 map.scale(x = -131.6, y = 48.5, ratio = FALSE, cex = 0.72)
 ```
 
-```{r}
 
-
-```
-
-
-```{r}
 #Gathering Bio-ORACLE covariates
+```{r}
 install.packages("sdmpredictors")
 install.packages("leaflet")
 # Load package
@@ -479,4 +542,6 @@ layer_stats()
 
 # Check Pearson correlation coefficient between layers
 layers_correlation()
+
 ```
+
